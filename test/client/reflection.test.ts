@@ -49,6 +49,14 @@ describe('ClientReflection', () => {
       expect(sig2.peek()).toBe(42);
     });
 
+    it('syncs an existing signal snapshot without replacing it', () => {
+      const {reflection} = setup();
+      const sig1 = reflection.getOrCreateSignal(1, 42);
+      const sig2 = reflection.syncSignalSnapshot(1, 99);
+      expect(sig1).toBe(sig2);
+      expect(sig2.peek()).toBe(99);
+    });
+
     it('different ids get different signals', () => {
       const {reflection} = setup();
       const sig1 = reflection.getOrCreateSignal(1, 'a');

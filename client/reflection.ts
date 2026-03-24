@@ -14,6 +14,7 @@ export class ClientReflection {
   private signals = new Map<number | string, Signal<any>>();
   private models = new Map<string, any>();
   private modelRegistry = new Map<string, any>();
+  private activeSignals = new Set<number | string>();
   private rpc: RPCClient;
   private ctx: WireContext;
   private watchBatch = new Set<number | string>();
@@ -68,6 +69,7 @@ export class ClientReflection {
 
     const createdSignal = signal(initialValue, {
       watched: () => {
+        this.activeSignals.add(id);
         if (unwatchTimeout) {
           clearTimeout(unwatchTimeout);
           unwatchTimeout = null;
@@ -79,6 +81,7 @@ export class ClientReflection {
       unwatched: () => {
         // Debounce unwatch so transient unmount/remount cycles stay subscribed.
         unwatchTimeout = setTimeout(() => {
+          this.activeSignals.delete(id);
           this.scheduleUnwatch(id);
           unwatchTimeout = null;
         }, 10);
@@ -87,6 +90,31 @@ export class ClientReflection {
 
     this.signals.set(id, createdSignal);
     return createdSignal;
+  }
+
+  syncSignalSnapshot(id: number | string, value: any): Signal<any> {
+    const sig = this.getOrCreateSignal(id, value);
+    sig.value = value;
+    return sig;
+  }
+
+  reconnect() {
+    if (this.watchFlushTimer) {
+      clearTimeout(this.watchFlushTimer);
+      this.watchFlushTimer = null;
+    }
+
+    if (this.unwatchFlushTimer) {
+      clearTimeout(this.unwatchFlushTimer);
+      this.unwatchFlushTimer = null;
+    }
+
+    this.watchBatch.clear();
+    this.unwatchBatch.clear();
+
+    if (this.activeSignals.size > 0) {
+      this.rpc.notify(WATCH_SIGNALS_METHOD, Array.from(this.activeSignals));
+    }
   }
 
   createModelFacade(serialized: any): any {
