@@ -76,6 +76,9 @@ export class ClientReflection {
     this.ctx = ctx && ctx.rpc === rpc ? ctx : {rpc};
 
     if (weakRefsAvailable && typeof FinalizationRegistry !== 'undefined') {
+      // Finalizers are cache hygiene only. A wire id or marker may be rebound
+      // to a newer object before an older one is collected, so each callback
+      // checks the current cache entry before deleting it.
       this.signalFinalizer = new FinalizationRegistry((id) => {
         if (!this.signals.get(id)?.deref()) this.signals.delete(id);
       });
@@ -484,15 +487,30 @@ export class ClientReflection {
     return new Set(Array.from(signals, (sig) => createCacheRef(sig)));
   }
 
-  private refreshStaleModelsForSignal(sig: Signal<any>) {
-    this.sweepCollectedEntries();
+  private modelHasLiveSignal(marker: string, target: Signal<any>): boolean {
+    const refs = this.modelSignals.get(marker);
+    if (!refs) return false;
 
+    let found = false;
+    for (const ref of refs) {
+      const sig = ref.deref();
+      if (sig) {
+        if (sig === target) found = true;
+      } else {
+        refs.delete(ref);
+      }
+    }
+
+    return found;
+  }
+
+  private refreshStaleModelsForSignal(sig: Signal<any>) {
     const markers: string[] = [];
-    for (const marker of this.modelSignals.keys()) {
+    for (const marker of this.staleModelMarkers) {
       if (
-        this.staleModelMarkers.has(marker) &&
-        this.liveModelSignals(marker).includes(sig) &&
-        !this.refreshingModelMarkers.has(marker)
+        !this.refreshingModelMarkers.has(marker) &&
+        this.getModel(marker) &&
+        this.modelHasLiveSignal(marker, sig)
       ) {
         markers.push(marker);
       }
