@@ -1,5 +1,27 @@
 # mixed-signals
 
+## 0.4.0
+
+### Minor Changes
+
+- 986645a: Add process-aware reconnect support that keeps client roots, signals, and reflected model facades alive across transport replacement, refreshes them from the next root snapshot, refreshes active held model facades that are not reachable from the reconnect root, lazily refreshes stale held facades when they become watched after a process change, replays active signal subscriptions, treats missing connection metadata as an unknown process for legacy servers, and exposes server connection metadata for process identity and retained-state resumes.
+
+### Patch Changes
+
+- e547760: Fix signal watch batching by consolidating to a single global debounce window.
+
+  `ClientReflection` now uses one shared static timer for watch/unwatch flushes
+  across all instances, instead of two per-instance timers. Watch and unwatch
+  batches are flushed together by `flushWatches()`, and `scheduleWatch`/
+  `scheduleUnwatch` each remove the signal id from the opposite pending batch,
+  fixing a latent race where the same id could be flushed as both a watch and an
+  unwatch in the same tick. A new `watchedSignals` set tracks which signals are
+  actually subscribed so redundant watch/unwatch RPC messages are no longer sent,
+  and the per-signal debounce timer in `getOrCreateSignal()` has been removed in
+  favour of the global 10ms flush window.
+
+- 97f8c2b: Store client reflection signals and reflected model facades behind weak cache references so unwatched, otherwise-unheld client-side identities can be garbage collected without losing identity preservation for objects still held by application code.
+
 ## 0.3.0
 
 ### Minor Changes
